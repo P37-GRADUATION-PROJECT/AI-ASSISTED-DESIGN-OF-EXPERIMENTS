@@ -1,0 +1,4 @@
+# Runtime dependencies for the web tool (pinned).
+fastapi==0.147.0
+uvicorn==0.54.0
+pyDOE3==1.6.2

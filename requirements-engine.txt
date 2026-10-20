@@ -1,0 +1,3 @@
+# Optimization engine dependencies (large: pulls in PyTorch).
+-r requirements.txt
+baybe==0.15.0
