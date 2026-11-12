@@ -91,6 +91,25 @@ class OptimizerSettings:
 
 
 @dataclass(frozen=True)
+class WarmStartSettings:
+    """Earlier experiments given to the optimizer as related tasks (transfer learning).
+
+    Each value of `task_column` in the source file becomes one source task;
+    the new experiment is `target_task`. Every factor must either be mapped
+    to a source column (`factors`) or get an explicit value (`fixed`), e.g.
+    the pH that the earlier experiments used. Nothing is guessed.
+    """
+
+    source: str  # CSV path, relative to the repository root unless absolute
+    task_column: str
+    target_task: str
+    factors: dict[str, str]  # config factor -> source column
+    responses: dict[str, str]  # config measured response -> source column
+    fixed: dict[str, float] = field(default_factory=dict)  # factor -> value for all source rows
+    filters: dict[str, str] = field(default_factory=dict)  # keep rows where column == value
+
+
+@dataclass(frozen=True)
 class DesignSettings:
     method: str = "bbd"
     center_points: int = 3
@@ -111,6 +130,7 @@ class ExperimentConfig:
     design: DesignSettings
     record_columns: tuple[str, ...] = field(default_factory=tuple)
     optimizer: OptimizerSettings = field(default_factory=OptimizerSettings)
+    warm_start: WarmStartSettings | None = None
 
     @property
     def measured_responses(self) -> tuple[ResponseInfo, ...]:
@@ -230,7 +250,47 @@ def parse_config(data: dict) -> ExperimentConfig:
         objective=Objective(primary.name, primary.goal),
         seed=seed,
     )
-    return ExperimentConfig(name, spec, tuple(infos), responses, design, record, optimizer)
+    warm = _parse_warm_start(data.get("warm_start"), params, responses)
+    return ExperimentConfig(name, spec, tuple(infos), responses, design, record, optimizer, warm)
+
+
+def _parse_warm_start(
+    w: dict | None, params: list[Parameter], responses: tuple[ResponseInfo, ...]
+) -> WarmStartSettings | None:
+    if not w or not w.get("enabled", True):
+        return None
+    where = "warm_start"
+    factors = {str(k): str(v) for k, v in w.get("factors", {}).items()}
+    fixed = {str(k): float(v) for k, v in w.get("fixed", {}).items()}
+    names = {p.name for p in params}
+    unknown = (set(factors) | set(fixed)) - names
+    if unknown:
+        raise ValueError(f"{where}: unknown factors {sorted(unknown)}")
+    both = set(factors) & set(fixed)
+    if both:
+        raise ValueError(f"{where}: factors both mapped and fixed: {sorted(both)}")
+    missing = names - set(factors) - set(fixed)
+    if missing:
+        raise ValueError(
+            f"{where}: factors {sorted(missing)} are not in the source data; give their value "
+            "in [warm_start.fixed] (the value the earlier experiments used)"
+        )
+    resp = {str(k): str(v) for k, v in w.get("responses", {}).items()}
+    measured = {r.name for r in responses if not r.derived}
+    if set(resp) != measured:
+        raise ValueError(
+            f"{where}.responses must map exactly the measured responses {sorted(measured)}"
+        )
+    target = str(_require(w, "target_task", where))
+    return WarmStartSettings(
+        source=str(_require(w, "source", where)),
+        task_column=str(_require(w, "task_column", where)),
+        target_task=target,
+        factors=factors,
+        responses=resp,
+        fixed=fixed,
+        filters={str(k): str(v) for k, v in w.get("filters", {}).items()},
+    )
 
 
 def load_config(path: str | Path) -> ExperimentConfig:

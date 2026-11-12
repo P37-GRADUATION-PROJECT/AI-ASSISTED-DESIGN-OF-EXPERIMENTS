@@ -13,6 +13,10 @@ Writes two files:
   - predictions log, CSV, one row per recommended run (default: next to the
     sheet, named <sheet>_predictions.csv); needed later for predicted vs actual
 
+Warm start: if the config has an enabled [warm_start] section, earlier
+experiments (e.g. the thesis runs) inform the model from round 1;
+--no-warm-start switches it off.
+
 Fair comparison (E3): history that contains Box-Behnken/CCD runs is refused,
 because the BO campaign must not see the classical design's results. Use
 --allow-classical-history only for simulations, never for the E3 campaign.
@@ -31,6 +35,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from engine.bo import check_history_is_fair, recommend  # noqa: E402
 from engine.config import load_config  # noqa: E402
 from engine.runsheet import read_results, write_run_sheet  # noqa: E402
+from engine.warmstart import load_prior, tasks  # noqa: E402
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -42,6 +47,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("-o", "--output", required=True, help="run sheet to write (.xlsx)")
     ap.add_argument("--log", help="predictions CSV (default: <output>_predictions.csv)")
     ap.add_argument("--allow-classical-history", action="store_true")
+    ap.add_argument(
+        "--no-warm-start", action="store_true", help="ignore [warm_start] in the config"
+    )
     args = ap.parse_args(argv)
 
     cfg = load_config(args.config)
@@ -68,7 +76,10 @@ def main(argv: list[str] | None = None) -> int:
         print("refused: the same run_id appears twice in the history", file=sys.stderr)
         return 2
 
-    runs = recommend(cfg, history, args.batch, round_no=args.round_no)
+    prior = [] if args.no_warm_start else load_prior(cfg)
+    if prior:
+        print(f"warm start: {len(prior)} earlier runs, tasks {', '.join(tasks(prior))}")
+    runs = recommend(cfg, history, args.batch, round_no=args.round_no, prior=prior)
     out = write_run_sheet(cfg, runs, args.output, f"Bayesian optimization, round {args.round_no}")
 
     log = Path(args.log) if args.log else out.with_name(out.stem + "_predictions.csv")
@@ -78,7 +89,17 @@ def main(argv: list[str] | None = None) -> int:
     with log.open("w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(
-            ["run_id", *names, *pred_cols, "round", "n_history", "seed", "objective", "created_at"]
+            [
+                "run_id",
+                *names,
+                *pred_cols,
+                "round",
+                "n_history",
+                "n_prior",
+                "seed",
+                "objective",
+                "created_at",
+            ]
         )
         for r in runs:
             w.writerow(
@@ -88,6 +109,7 @@ def main(argv: list[str] | None = None) -> int:
                     *[r.get(c, "") for c in pred_cols],
                     args.round_no,
                     len(history),
+                    len(prior),
                     cfg.spec.seed + args.round_no,
                     cfg.optimizer.objective,
                     stamp,

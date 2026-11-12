@@ -60,3 +60,23 @@ batch_size = 4
 
 [run_sheet]
 record = ["bath_temp_start_C", "bath_temp_end_C"]
+
+# Warm start: earlier experiments as related tasks (transfer learning).
+# OFF until the institute confirms the pH (or temperature) the thesis runs used:
+# the thesis does not report it, and the code never guesses a missing factor.
+[warm_start]
+enabled = false
+source = "data/public/cimyapan2024/extraction_runs.csv"   # relative to the repo root
+task_column = "species"          # each species = one source task
+target_task = "e3_bath"          # the new experiment (ultrasonic bath)
+filters = { use_in_model = "1" } # drop the flagged suspect run
+
+[warm_start.factors]             # config factor = source column
+biomass = "biomass_g_L"
+time = "time_min"
+
+[warm_start.responses]
+soluble_protein = "soluble_protein_g_L"
+
+[warm_start.fixed]               # factors the source data does not have
+ph = 7.0                         # PENDING: thesis pH not reported; confirm with the institute

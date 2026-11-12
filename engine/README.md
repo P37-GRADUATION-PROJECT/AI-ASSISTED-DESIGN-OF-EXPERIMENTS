@@ -18,6 +18,7 @@ Install the engine dependencies with `pip install -r requirements-engine.txt`.
 | `rsm.py` | Quadratic response-surface model: fit, R², adjusted R², Q² (LOO), predicted optimum | no |
 | `runsheet.py` | Excel run sheet for the lab and reading measured results back | no |
 | `bo.py` | Bayesian-optimization batches (single or desirability objective) with predictions | yes |
+| `warmstart.py` | Loads earlier experiments (e.g. the thesis runs) as warm-start data | no |
 
 ## Classical design workflow (E3 baseline)
 
@@ -64,3 +65,21 @@ python scripts/recommend_batch.py experiments/e3/case_study.example.toml --round
   runs is refused (`--allow-classical-history` exists for simulations only).
 - A response can be derived instead of typed in, e.g. yield =
   `1000 * soluble_protein / biomass` (`ratio_of`, `scale` in the config).
+
+## Warm start (transfer learning)
+
+An enabled `[warm_start]` section in the config gives earlier experiments to
+the optimizer as related tasks (BayBE `TaskParameter`): each source task (here
+each species of the Çimyapan 2024 thesis) informs the model, and only the
+target task (the new experiment) is ever recommended. With warm start the
+first round is already model-based.
+
+- Every factor must be mapped to a source column or given a value in
+  `[warm_start.fixed]`. A missing value is an error; the code never guesses.
+  The example ships with warm start **off** because the thesis does not report
+  the pH it used.
+- Source rows outside the new ranges are kept (they still inform the model);
+  the lab's own runs are checked strictly against the ranges.
+- `--no-warm-start` on `scripts/recommend_batch.py` switches it off per call.
+- `experiments/e2/loso_thesis.py` checks whether it helps, holding out one species
+  at a time (see `experiments/e2/README.md`).
