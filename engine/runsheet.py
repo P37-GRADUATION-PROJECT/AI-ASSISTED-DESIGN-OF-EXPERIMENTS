@@ -15,7 +15,9 @@ Column groups:
 
 When reading back, a run counts as measured once every response cell holds a
 number. If an "applied" cell is filled, that value replaces the planned one,
-so the model always sees the condition that was really used.
+so the model always sees the condition that was really used. Derived
+responses (e.g. yield = 1000 * protein / biomass) have no column; they are
+computed here from the applied values.
 """
 
 from __future__ import annotations
@@ -54,7 +56,7 @@ def _columns(cfg: ExperimentConfig) -> list[tuple[str, str, bool]]:
     for f in cfg.factors:
         unit = f" ({f.unit})" if f.unit else ""
         cols.append((f.name + APPLIED, f"{f.label} applied{unit}, only if different", True))
-    for r in cfg.responses:
+    for r in cfg.measured_responses:  # derived responses are computed, not typed in
         unit = f" ({r.unit})" if r.unit else ""
         cols.append((r.name, f"{r.name} measured{unit}", True))
     cols += [(c, c, True) for c in cfg.record_columns]
@@ -157,7 +159,7 @@ def read_results(cfg: ExperimentConfig, path: str | Path) -> SheetResults:
             continue
         rid = str(row[col["run_id"]])
         try:
-            resp = {r.name: _number(row[col[r.name]]) for r in cfg.responses}
+            resp = {r.name: _number(row[col[r.name]]) for r in cfg.measured_responses}
         except ValueError as e:
             out.problems.append(f"{rid}: response is not a number ({e})")
             out.pending.append(rid)
@@ -179,6 +181,18 @@ def read_results(cfg: ExperimentConfig, path: str | Path) -> SheetResults:
                 out.problems.append(f"{rid}: {f.name} = {value:g} is outside {lo:g}-{hi:g}")
             run[f.name] = value
         run.update(resp)
+        derived_ok = True
+        for r in cfg.responses:
+            if r.derived:
+                num, den = (float(run[k]) for k in r.ratio_of)
+                if den == 0:
+                    out.problems.append(f"{rid}: cannot derive {r.name} ({r.ratio_of[1]} is 0)")
+                    derived_ok = False
+                    break
+                run[r.name] = r.scale * num / den
+        if not derived_ok:
+            out.pending.append(rid)
+            continue
         for c in cfg.record_columns:
             if row[col[c]] is not None:
                 run[c] = row[col[c]]

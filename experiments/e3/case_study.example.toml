@@ -35,10 +35,28 @@ low = 7
 high = 11
 decimals = 1
 
+# PENDING: which response is primary (g/L, yield per gram, or both) is not decided.
+# Both are defined; [optimizer] picks what BO optimizes. The lab only types g/L.
 [[responses]]
-name = "soluble_protein"   # PENDING: primary response (g/L or yield per gram) not decided
+name = "soluble_protein"
 unit = "g/L"
 goal = "max"
+low = 0.0            # expected range, used only by the desirability objective
+high = 2.5           # (thesis maximum was 2.05 g/L)
+
+[[responses]]
+name = "yield_mg_per_g"            # derived: 1000 * soluble_protein / biomass
+ratio_of = ["soluble_protein", "biomass"]
+scale = 1000
+unit = "mg/g"
+goal = "max"
+low = 0.0
+high = 80.0          # (thesis maximum was 70 mg/g)
+
+[optimizer]
+objective = "single"       # single | desirability (both responses together)
+target = "soluble_protein" # PENDING: used when objective = "single"
+batch_size = 4
 
 [run_sheet]
 record = ["bath_temp_start_C", "bath_temp_end_C"]
