@@ -1,4 +1,7 @@
 # Runtime dependencies for the web tool (pinned).
 fastapi==0.147.0
 uvicorn==0.54.0
+numpy==2.5.4
+scipy==1.18.1
 pyDOE3==1.6.2
+openpyxl==3.1.5
