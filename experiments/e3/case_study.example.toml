@@ -1,0 +1,82 @@
+# E3 case study: DRAFT configuration.
+#
+# Factors, ranges and responses are NOT final. They follow the team's case-study
+# proposal (30 Oct 2026) and must be confirmed by the institute before any run
+# sheet is sent to the lab. Change values here only; no code change is needed.
+
+name = "E3 microalgal protein extraction (ultrasonic bath) - DRAFT"
+seed = 2026          # fixes the shuffled run order; keep it once the sheet is issued
+
+[design]
+method = "bbd"       # bbd (3+ factors) | ccd_face | ccd_inscribed
+center_points = 3    # replicated centre runs also estimate the lab noise
+
+[[factors]]
+name = "biomass"
+label = "Biomass concentration"
+unit = "g/L"
+low = 10
+high = 50
+decimals = 1
+
+[[factors]]
+name = "time"
+label = "Ultrasound time"
+unit = "min"
+low = 5
+high = 20
+decimals = 1
+
+[[factors]]
+name = "ph"            # PENDING: pH or temperature (25-40 C) as the third factor
+label = "pH"
+unit = ""
+low = 7
+high = 11
+decimals = 1
+
+# PENDING: which response is primary (g/L, yield per gram, or both) is not decided.
+# Both are defined; [optimizer] picks what BO optimizes. The lab only types g/L.
+[[responses]]
+name = "soluble_protein"
+unit = "g/L"
+goal = "max"
+low = 0.0            # expected range, used only by the desirability objective
+high = 2.5           # (thesis maximum was 2.05 g/L)
+
+[[responses]]
+name = "yield_mg_per_g"            # derived: 1000 * soluble_protein / biomass
+ratio_of = ["soluble_protein", "biomass"]
+scale = 1000
+unit = "mg/g"
+goal = "max"
+low = 0.0
+high = 80.0          # (thesis maximum was 70 mg/g)
+
+[optimizer]
+objective = "single"       # single | desirability (both responses together)
+target = "soluble_protein" # PENDING: used when objective = "single"
+batch_size = 4
+
+[run_sheet]
+record = ["bath_temp_start_C", "bath_temp_end_C"]
+
+# Warm start: earlier experiments as related tasks (transfer learning).
+# OFF until the institute confirms the pH (or temperature) the thesis runs used:
+# the thesis does not report it, and the code never guesses a missing factor.
+[warm_start]
+enabled = false
+source = "data/public/cimyapan2024/extraction_runs.csv"   # relative to the repo root
+task_column = "species"          # each species = one source task
+target_task = "e3_bath"          # the new experiment (ultrasonic bath)
+filters = { use_in_model = "1" } # drop the flagged suspect run
+
+[warm_start.factors]             # config factor = source column
+biomass = "biomass_g_L"
+time = "time_min"
+
+[warm_start.responses]
+soluble_protein = "soluble_protein_g_L"
+
+[warm_start.fixed]               # factors the source data does not have
+ph = 7.0                         # PENDING: thesis pH not reported; confirm with the institute

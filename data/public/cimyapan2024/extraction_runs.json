@@ -1,0 +1,129 @@
+{
+  "source": {
+    "citation": "Çimyapan, Ş. (2024). MSc thesis, Institute of Biotechnology, Gebze Technical University. Advisor: Assoc. Prof. Dr. Müge İşleten Hoşoğlu.",
+    "tables": "Table 3.1 (p. 29), Table 3.2 (p. 31), Table 3.3 (p. 33)",
+    "received": "2026-10-21, from the GTU Institute of Biotechnology (via B. Altıparmak)",
+    "transcribed_by": "Emre Kaan Şahin, 2026-11-12; checked against the rendered PDF pages"
+  },
+  "method": {
+    "extraction": "Probe-type ultrasonic homogenizer (Bandelin HD 2070), 9 x 10% cycle, 45-55% power; biomass dispersed in deionized water; centrifuged 10,000 rpm, 40 min",
+    "response": "Total soluble protein in the supernatant (g/L), Lowry method, BSA standard",
+    "design_stated_in_thesis": "Box-Behnken, 13 runs per species, Design-Expert 13.0.0",
+    "design_actual": "Two-factor central composite design (4 factorial + 4 axial + 5 centre runs). Box-Behnken needs at least 3 factors, so the label in the thesis is not correct.",
+    "not_reported": "pH and temperature during extraction; protein content of the biomasses"
+  },
+  "columns": {
+    "yield_mg_per_g": "1000 * soluble_protein_g_L / biomass_g_L (derived, not in thesis)",
+    "biomass_coded/time_coded": "recomputed from actual values; +-1 factorial, +-1.414 axial",
+    "use_in_model": "0 = excluded by default (see flags); 1 = used"
+  },
+  "factorial_levels": {
+    "S_platensis": {
+      "biomass": [
+        10.0,
+        50.0
+      ],
+      "time": [
+        5.0,
+        20.0
+      ]
+    },
+    "A_protothecoides": {
+      "biomass": [
+        10.0,
+        50.0
+      ],
+      "time": [
+        15.0,
+        40.0
+      ]
+    },
+    "S_limacinum": {
+      "biomass": [
+        10.0,
+        50.0
+      ],
+      "time": [
+        15.0,
+        40.0
+      ]
+    }
+  },
+  "flags": {
+    "suspect_value": "Centre run reads 0.108 g/L while the other four centre runs read 1.099-1.133 g/L. Probably a transcription error (e.g. 1.108). Excluded from models by default (use_in_model = 0) until the raw file confirms the value.",
+    "near_zero": "0.0001 g/L at 1.72 g/L biomass; likely below the Lowry quantification limit. Kept, but treat as 'about zero', not as an exact value.",
+    "time_level_mismatch": "Low time level printed as 5 min for run 10 but 2 min for run 13 (both coded -1); the axial point 2.29 min does not match 12.5 - 1.414 * 7.5 = 1.89 min. Actual values are used as printed.",
+    "centre_time_typo": "Centre time printed as 12.30 min; the midpoint of 5-20 min is 12.50 min. Value kept as printed (difference is negligible for modelling).",
+    "axial_time_asymmetric": "Axial times 10.22 and 48.18 min are not symmetric around 27.5 min (a rotatable CCD would give 9.82 and 45.18 min). Values kept as printed.",
+    "coded_labels": "All tables print axial points as -1/+1; in a CCD they are -1.414/+1.414. The columns *_coded are recomputed from the actual values."
+  },
+  "summary": {
+    "S_platensis": {
+      "n_runs": 13,
+      "n_used": 13,
+      "centre_replicates_used": 5,
+      "centre_mean_g_L": 1.0016,
+      "centre_sd_g_L": 0.1181,
+      "centre_cv_pct": 11.8,
+      "best_concentration": {
+        "run": 8,
+        "biomass_g_L": 50.0,
+        "time_min": 20.0,
+        "soluble_protein_g_L": 2.05,
+        "yield_mg_per_g": 41.0
+      },
+      "best_yield": {
+        "run": 11,
+        "biomass_g_L": 10.0,
+        "time_min": 20.0,
+        "soluble_protein_g_L": 0.7,
+        "yield_mg_per_g": 70.0
+      }
+    },
+    "A_protothecoides": {
+      "n_runs": 13,
+      "n_used": 13,
+      "centre_replicates_used": 5,
+      "centre_mean_g_L": 0.6458,
+      "centre_sd_g_L": 0.0601,
+      "centre_cv_pct": 9.3,
+      "best_concentration": {
+        "run": 8,
+        "biomass_g_L": 58.28,
+        "time_min": 27.5,
+        "soluble_protein_g_L": 1.116,
+        "yield_mg_per_g": 19.15
+      },
+      "best_yield": {
+        "run": 7,
+        "biomass_g_L": 30.0,
+        "time_min": 27.5,
+        "soluble_protein_g_L": 0.723,
+        "yield_mg_per_g": 24.1
+      }
+    },
+    "S_limacinum": {
+      "n_runs": 13,
+      "n_used": 12,
+      "centre_replicates_used": 4,
+      "centre_mean_g_L": 1.1162,
+      "centre_sd_g_L": 0.014,
+      "centre_cv_pct": 1.3,
+      "best_concentration": {
+        "run": 8,
+        "biomass_g_L": 58.28,
+        "time_min": 27.5,
+        "soluble_protein_g_L": 1.752,
+        "yield_mg_per_g": 30.06
+      },
+      "best_yield": {
+        "run": 11,
+        "biomass_g_L": 10.0,
+        "time_min": 40.0,
+        "soluble_protein_g_L": 0.485,
+        "yield_mg_per_g": 48.5
+      }
+    }
+  },
+  "csv_sha256": "37e10b55ffe6f94666cf31bddbed7d5c0565f16f537660e3478907e390ad5bb1"
+}
