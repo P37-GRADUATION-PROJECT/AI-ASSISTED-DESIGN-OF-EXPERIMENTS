@@ -24,3 +24,31 @@ jobs:
         run: ruff check . && ruff format --check .
       - name: Test
         run: pytest
+
+  # Runs the engine tests (BayBE, warm start) that the job above skips because
+  # BayBE is not installed there. Any skipped test fails this job.
+  engine-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - name: Install CPU-only PyTorch
+        # The default Linux wheel pulls in several GB of CUDA libraries.
+        run: pip install torch==2.14.1 --index-url https://download.pytorch.org/whl/cpu
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt -r requirements-engine.txt
+      - name: Check engine imports
+        run: python -c "import baybe, matplotlib"
+      - name: Test (no skips allowed)
+        run: |
+          set -o pipefail
+          pytest -rs | tee pytest.log
+          if grep -qE '[0-9]+ skipped' pytest.log; then
+            echo "::error::Some tests were skipped in the engine job"
+            exit 1
+          fi
