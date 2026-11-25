@@ -32,7 +32,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from engine.bo import check_history_is_fair, recommend  # noqa: E402
+from engine.bo import check_history_is_fair, check_history_ranges, recommend  # noqa: E402
 from engine.config import load_config  # noqa: E402
 from engine.runsheet import read_results, write_run_sheet  # noqa: E402
 from engine.warmstart import load_prior, tasks  # noqa: E402
@@ -79,6 +79,11 @@ def main(argv: list[str] | None = None) -> int:
     prior = [] if args.no_warm_start else load_prior(cfg)
     if prior:
         print(f"warm start: {len(prior)} earlier runs, tasks {', '.join(tasks(prior))}")
+    try:
+        check_history_ranges(cfg, history)
+    except ValueError as e:
+        print(f"refused: {e}", file=sys.stderr)
+        return 2
     runs = recommend(cfg, history, args.batch, round_no=args.round_no, prior=prior)
     out = write_run_sheet(cfg, runs, args.output, f"Bayesian optimization, round {args.round_no}")
 
