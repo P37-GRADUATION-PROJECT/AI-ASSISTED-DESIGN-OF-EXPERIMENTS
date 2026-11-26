@@ -29,6 +29,12 @@ Format::
     [run_sheet]
     record = ["bath_temp_start_C", "bath_temp_end_C"]   # extra columns to fill in
 
+    [assay.soluble_protein]   # optional: the lab types absorbances, not g/L
+    method = "lowry"
+    slope = 4.6113            # BSA calibration: absorbance = slope * mg/mL + intercept
+    intercept = 0.0583
+    dilution = 10             # default dilution factor (editable per run on the sheet)
+
 Standard library only (tomllib).
 """
 
@@ -38,6 +44,7 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from engine.assay import AssaySettings, parse_assay
 from engine.interface import ExperimentSpec, Goal, Objective, Parameter, ParameterKind
 
 DESIGN_METHODS = ("bbd", "ccd_face", "ccd_inscribed")
@@ -131,6 +138,8 @@ class ExperimentConfig:
     record_columns: tuple[str, ...] = field(default_factory=tuple)
     optimizer: OptimizerSettings = field(default_factory=OptimizerSettings)
     warm_start: WarmStartSettings | None = None
+    # measured response -> assay that converts the lab's readings into its value
+    assays: dict[str, AssaySettings] = field(default_factory=dict)
 
     @property
     def measured_responses(self) -> tuple[ResponseInfo, ...]:
@@ -251,7 +260,13 @@ def parse_config(data: dict) -> ExperimentConfig:
         seed=seed,
     )
     warm = _parse_warm_start(data.get("warm_start"), params, responses)
-    return ExperimentConfig(name, spec, tuple(infos), responses, design, record, optimizer, warm)
+    assays = {str(k): parse_assay(str(k), v) for k, v in data.get("assay", {}).items()}
+    not_measured = set(assays) - {r.name for r in responses if not r.derived}
+    if not_measured:
+        raise ValueError(f"assay: {sorted(not_measured)} are not measured responses")
+    return ExperimentConfig(
+        name, spec, tuple(infos), responses, design, record, optimizer, warm, assays
+    )
 
 
 def _parse_warm_start(
