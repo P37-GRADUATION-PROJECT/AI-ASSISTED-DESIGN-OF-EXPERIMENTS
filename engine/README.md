@@ -79,7 +79,9 @@ first round is already model-based.
   The example ships with warm start **off** because the thesis does not report
   the pH it used.
 - Source rows outside the new ranges are kept (they still inform the model);
-  the lab's own runs are checked strictly against the ranges.
+  the lab's own runs may lie at most 10 % of a range outside it (a real
+  deviation, written in the "applied" column); further out is refused as a
+  likely typing error, naming the run.
 - `--no-warm-start` on `scripts/recommend_batch.py` switches it off per call.
 - `experiments/e2/loso_thesis.py` checks whether it helps, holding out one species
   at a time (see `experiments/e2/README.md`).

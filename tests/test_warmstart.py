@@ -94,7 +94,7 @@ def test_warm_start_can_be_switched_off_per_call():
     assert all(r["point_type"] == "bo-initial" for r in runs)
 
 
-def test_lab_history_outside_ranges_is_still_rejected():
+def test_lab_history_far_outside_ranges_is_still_rejected():
     pytest.importorskip("baybe")
     from engine.bo import recommend
 

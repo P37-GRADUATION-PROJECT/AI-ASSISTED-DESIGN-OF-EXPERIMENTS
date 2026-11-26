@@ -155,3 +155,50 @@ def test_script_writes_unique_log_columns_and_refuses_classical_history(tmp_path
     wb.save(bbd)
     args = [str(EXAMPLE), "--round", "2", "--history", str(bbd), "-o", str(tmp_path / "x.xlsx")]
     assert recommend_batch.main(args) == 2
+
+
+def test_applied_value_slightly_outside_range_is_kept():
+    # The lab ran one condition at 21 min (range 5-20): a real deviation, not an error.
+    cfg = load_config(EXAMPLE)
+    hist = _measure(cfg, recommend(cfg, [], round_no=1))
+    hist[0]["time"] = 21.0
+    hist[0]["soluble_protein"] = _lab(hist[0])
+    runs = recommend(cfg, hist, round_no=2)
+    assert len(runs) == cfg.optimizer.batch_size
+    for r in runs:  # recommendations themselves stay inside the ranges
+        for p in cfg.spec.parameters:
+            assert p.bounds[0] <= r[p.name] <= p.bounds[1]
+
+
+def test_value_far_outside_range_is_refused_with_run_id():
+    cfg = load_config(EXAMPLE)
+    hist = _measure(cfg, recommend(cfg, [], round_no=1))
+    hist[2]["biomass"] = 70.0  # typo for 7.0 or 40.0; range is 10-50
+    with pytest.raises(ValueError, match=r"BO1-03: biomass = 70"):
+        recommend(cfg, hist, round_no=2)
+
+
+def test_script_refuses_far_out_applied_value_without_traceback(tmp_path, capsys):
+    import sys
+
+    sys.path.insert(0, str(ROOT))
+    from openpyxl import load_workbook
+
+    from scripts import recommend_batch
+
+    sheet = tmp_path / "bo1.xlsx"
+    assert recommend_batch.main([str(EXAMPLE), "--round", "1", "-o", str(sheet)]) == 0
+    wb = load_workbook(sheet)
+    ws = wb["Run sheet"]
+    keys = [c.value for c in ws[2]]
+    for i in range(3, ws.max_row + 1):
+        ws.cell(row=i, column=keys.index("soluble_protein") + 1, value=1.0)
+    ws.cell(row=3, column=keys.index("time__applied") + 1, value=21.0)  # kept
+    args = [str(EXAMPLE), "--round", "2", "--history", str(sheet), "-o", str(tmp_path / "b2.xlsx")]
+    wb.save(sheet)
+    assert recommend_batch.main(args) == 0
+
+    ws.cell(row=4, column=keys.index("biomass__applied") + 1, value=70.0)  # refused
+    wb.save(sheet)
+    assert recommend_batch.main(args) == 2
+    assert "biomass = 70 is too far outside" in capsys.readouterr().err

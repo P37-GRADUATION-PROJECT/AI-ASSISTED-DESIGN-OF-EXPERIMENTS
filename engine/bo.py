@@ -35,6 +35,12 @@ from engine.warmstart import TASK, load_prior, tasks
 
 CLASSICAL_PREFIXES = ("BBD-", "CCD-")
 
+# How far (as a fraction of the factor's range) an applied value in the lab's
+# history may lie outside the range. A run done at 21 min with a 5-20 min range
+# is a real condition and is kept; 70 g/L with a 10-50 g/L range is more likely
+# a typing error and is refused.
+HISTORY_SLACK = 0.10
+
 
 def _targets(cfg: ExperimentConfig):
     from baybe.targets import NumericalTarget
@@ -72,8 +78,9 @@ def build_campaign(cfg: ExperimentConfig, history: list[Run], prior: list[Run] |
     space gets a task parameter: each source task is a related experiment and
     only the target task (the new experiment) is ever recommended. Source rows
     may lie outside the new ranges (e.g. the thesis used up to 48 min); they
-    are kept because they still inform the model. The lab's own history must
-    stay inside the ranges and is checked strictly.
+    are kept because they still inform the model. The lab's own history may
+    lie slightly outside the ranges (an applied value that deviated from the
+    plan, see `check_history_ranges`); anything further out is refused.
     """
     from baybe import Campaign
     from baybe.objectives import DesirabilityObjective, SingleTargetObjective
@@ -90,6 +97,7 @@ def build_campaign(cfg: ExperimentConfig, history: list[Run], prior: list[Run] |
 
     names = [p.name for p in cfg.spec.parameters]
     cols = names + [t.name for t in targets]
+    check_history_ranges(cfg, history)
     if prior:
         target = _target_task(cfg)
         source_tasks = tasks(prior)
@@ -103,13 +111,46 @@ def build_campaign(cfg: ExperimentConfig, history: list[Run], prior: list[Run] |
         )
         if history:
             hist = [{**r, TASK: target} for r in history]
-            campaign.add_measurements(_frame(cfg, hist, [*cols, TASK], "history"))
+            campaign.add_measurements(
+                _frame(cfg, hist, [*cols, TASK], "history"),
+                numerical_measurements_must_be_within_tolerance=False,
+            )
         return campaign
 
     campaign = Campaign(SearchSpace.from_product(params), objective)
     if history:
-        campaign.add_measurements(_frame(cfg, history, cols, "history"))
+        campaign.add_measurements(
+            _frame(cfg, history, cols, "history"),
+            numerical_measurements_must_be_within_tolerance=False,
+        )
     return campaign
+
+
+def check_history_ranges(cfg: ExperimentConfig, history: list[Run]) -> None:
+    """Refuse lab runs whose factor values lie well outside the ranges.
+
+    Values up to `HISTORY_SLACK` of the range outside it are accepted: the run
+    was really done there, so the model should see it (the run sheet reader
+    already prints a CHECK line for it). Further out is treated as a typing
+    error and raises ValueError naming the run, so it can be corrected in the
+    sheet instead of crashing inside BayBE.
+    """
+    errors = []
+    for r in history:
+        for p in cfg.spec.parameters:
+            lo, hi = p.bounds
+            slack = HISTORY_SLACK * (hi - lo)
+            if r.get(p.name) is None:
+                continue  # reported by _frame as a missing value
+            v = float(r[p.name])
+            if not lo - slack <= v <= hi + slack:
+                errors.append(
+                    f"{r.get('run_id', '?')}: {p.name} = {v:g} is too far outside "
+                    f"{lo:g}-{hi:g} (allowed {lo - slack:g}-{hi + slack:g}); "
+                    "check the sheet for a typing error"
+                )
+    if errors:
+        raise ValueError("; ".join(errors))
 
 
 def _target_task(cfg: ExperimentConfig) -> str:
