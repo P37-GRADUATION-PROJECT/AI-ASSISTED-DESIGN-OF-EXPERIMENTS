@@ -9,7 +9,9 @@ Column groups:
     run_order, run_id, std_order, point_type          (filled in, grey)
     <factor>              planned value                (filled in, grey)
     <factor>__applied     value actually used, only if different from planned
-    <response>            measured value
+    <response>            measured value, or for a response with an assay in the
+                          config (e.g. Lowry): <response>__abs1, __abs2, ... (the
+                          instrument readings) and <response>__dilution
     <record columns>      extra observations, e.g. bath temperature
     notes                 free text
 
@@ -17,7 +19,8 @@ When reading back, a run counts as measured once every response cell holds a
 number. If an "applied" cell is filled, that value replaces the planned one,
 so the model always sees the condition that was really used. Derived
 responses (e.g. yield = 1000 * protein / biomass) have no column; they are
-computed here from the applied values.
+computed here from the applied values. Assay responses are computed from the
+readings with the config's calibration (see `engine/assay.py`).
 """
 
 from __future__ import annotations
@@ -30,10 +33,13 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
+from engine.assay import lowry
 from engine.config import ExperimentConfig
 from engine.interface import Run
 
 APPLIED = "__applied"
+ABS = "__abs"
+DILUTION = "__dilution"
 META = ["run_order", "run_id", "std_order", "point_type"]
 META_LABELS = {
     "run_order": "Run order",
@@ -57,8 +63,14 @@ def _columns(cfg: ExperimentConfig) -> list[tuple[str, str, bool]]:
         unit = f" ({f.unit})" if f.unit else ""
         cols.append((f.name + APPLIED, f"{f.label} applied{unit}, only if different", True))
     for r in cfg.measured_responses:  # derived responses are computed, not typed in
-        unit = f" ({r.unit})" if r.unit else ""
-        cols.append((r.name, f"{r.name} measured{unit}", True))
+        assay = cfg.assays.get(r.name)
+        if assay is None:
+            unit = f" ({r.unit})" if r.unit else ""
+            cols.append((r.name, f"{r.name} measured{unit}", True))
+            continue
+        for i in range(1, assay.replicates + 1):
+            cols.append((f"{r.name}{ABS}{i}", f"{r.name}: absorbance {i}", True))
+        cols.append((r.name + DILUTION, f"{r.name}: dilution factor", True))
     cols += [(c, c, True) for c in cfg.record_columns]
     cols.append(("notes", "Notes", True))
     return cols
@@ -76,8 +88,9 @@ def write_run_sheet(cfg: ExperimentConfig, runs: list[Run], path: str | Path, me
         h.alignment = Alignment(wrap_text=True, vertical="top", horizontal="center")
         ws.cell(row=2, column=j, value=key).font = KEY
         ws.column_dimensions[get_column_letter(j)].width = 10 if key in META else 16
+        default = _defaults(cfg).get(key)
         for i, run in enumerate(runs, start=3):
-            c = ws.cell(row=i, column=j, value=None if is_input else run.get(key))
+            c = ws.cell(row=i, column=j, value=default if is_input else run.get(key))
             c.fill = INPUT if is_input else GREY
             c.alignment = Alignment(horizontal="center")
     ws.row_dimensions[1].height = 62
@@ -114,6 +127,17 @@ def write_run_sheet(cfg: ExperimentConfig, runs: list[Run], path: str | Path, me
     for f, p in zip(cfg.factors, cfg.spec.parameters, strict=True):
         lo, hi = p.bounds
         lines.append((f.name, f"{f.label} | {f.unit} | {lo:g} | {hi:g}"))
+    for name, a in cfg.assays.items():
+        lines.append(
+            (
+                "Assay",
+                f"{name}: type the {a.replicates} absorbance readings and the dilution factor "
+                f"(default {a.dilution:g}). {a.method.capitalize()} calibration: absorbance = "
+                f"{a.slope:g} x mg/mL + {a.intercept:g}"
+                + (f" ({a.reference})" if a.reference else "")
+                + ". The concentration is computed when the sheet is read.",
+            )
+        )
     for i, (a, b) in enumerate(lines, start=1):
         info.cell(row=i, column=1, value=a).font = Font(bold=True)
         info.cell(row=i, column=2, value=b)
@@ -123,6 +147,11 @@ def write_run_sheet(cfg: ExperimentConfig, runs: list[Run], path: str | Path, me
     path.parent.mkdir(parents=True, exist_ok=True)
     wb.save(path)
     return path
+
+
+def _defaults(cfg: ExperimentConfig) -> dict[str, float]:
+    """Pre-filled input cells: the default dilution factor of each assay."""
+    return {name + DILUTION: a.dilution for name, a in cfg.assays.items()}
 
 
 def _number(v: object) -> float | None:
@@ -143,6 +172,29 @@ class SheetResults:
     problems: list[str] = field(default_factory=list)  # anything a person should look at
 
 
+def _responses(cfg: ExperimentConfig, row: tuple, col: dict[str, int]):
+    """({response: value, or None while its cells are not all filled}, assay flags)."""
+    values: dict[str, float | None] = {}
+    flags: list[str] = []
+    for r in cfg.measured_responses:
+        assay = cfg.assays.get(r.name)
+        if assay is None:
+            values[r.name] = _number(row[col[r.name]])
+            continue
+        readings = [_number(row[col[f"{r.name}{ABS}{i}"]]) for i in range(1, assay.replicates + 1)]
+        if any(v is None for v in readings):
+            values[r.name] = None
+            continue
+        dilution = _number(row[col[r.name + DILUTION]])
+        if dilution is None:
+            dilution = assay.dilution
+            flags.append(f"{r.name}: dilution factor empty, used the default {dilution:g}")
+        res = lowry(readings, dilution, assay)
+        values[r.name] = res.value
+        flags += [f"{r.name}: {f}" for f in res.flags]
+    return values, flags
+
+
 def read_results(cfg: ExperimentConfig, path: str | Path) -> SheetResults:
     ws = load_workbook(Path(path), data_only=True)["Run sheet"]
     keys = [c.value for c in ws[2]]
@@ -159,7 +211,7 @@ def read_results(cfg: ExperimentConfig, path: str | Path) -> SheetResults:
             continue
         rid = str(row[col["run_id"]])
         try:
-            resp = {r.name: _number(row[col[r.name]]) for r in cfg.measured_responses}
+            resp, flags = _responses(cfg, row, col)
         except ValueError as e:
             out.problems.append(f"{rid}: response is not a number ({e})")
             out.pending.append(rid)
@@ -167,6 +219,7 @@ def read_results(cfg: ExperimentConfig, path: str | Path) -> SheetResults:
         if any(v is None for v in resp.values()):
             out.pending.append(rid)
             continue
+        out.problems += [f"{rid}: {f}" for f in flags]
         run: Run = {k: row[col[k]] for k in META}
         for f in cfg.factors:
             planned = _number(row[col[f.name]])

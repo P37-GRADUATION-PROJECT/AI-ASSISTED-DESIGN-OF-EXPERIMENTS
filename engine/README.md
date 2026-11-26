@@ -17,6 +17,7 @@ Install the engine dependencies with `pip install -r requirements-engine.txt`.
 | `classical.py` | Box–Behnken and central composite designs inside the factor ranges, shuffled run order | no |
 | `rsm.py` | Quadratic response-surface model: fit, R², adjusted R², Q² (LOO), predicted optimum | no |
 | `runsheet.py` | Excel run sheet for the lab and reading measured results back | no |
+| `assay.py` | Lowry assay: absorbance readings -> protein (g/L), with quality flags | no |
 | `bo.py` | Bayesian-optimization batches (single or desirability objective) with predictions | yes |
 | `warmstart.py` | Loads earlier experiments (e.g. the thesis runs) as warm-start data | no |
 
@@ -41,6 +42,30 @@ Design choices:
   gives the same sheet.
 - When reading results, an "applied" value replaces the planned one, so the
   model sees the condition that was actually used. Decimal commas are accepted.
+
+## Assay readings instead of typed results (Lowry)
+
+With an `[assay.<response>]` section in the config, the run sheet asks for
+what the instrument shows (two absorbance readings and the dilution factor,
+pre-filled with the default) instead of the computed g/L. Reading the sheet
+back applies the calibration, the same formula as the lab's Excel sheet:
+
+    protein (g/L) = (mean absorbance - intercept) / slope * dilution
+
+```toml
+[assay.soluble_protein]
+method = "lowry"
+slope = 4.6113        # BSA line, absorbance = slope * mg/mL + intercept
+intercept = 0.0583
+dilution = 10         # 50 uL sample + 450 uL water
+reference = "LabBio Food LBF3 calibration"   # or the date of same-day standards
+```
+
+Runs are flagged (still used) when the mean absorbance is below `abs_min`
+(0.100, probably diluted too much), above `abs_max` (1.000, outside the
+calibration range) or when the readings differ by more than `max_rel_diff`
+(15 %). If standards are read on the day, put that line's slope and
+intercept in the config for that batch.
 
 ## Bayesian optimization workflow (E3 campaign)
 
