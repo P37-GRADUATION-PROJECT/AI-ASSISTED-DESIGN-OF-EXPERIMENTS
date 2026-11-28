@@ -1,0 +1,75 @@
+# E3 case study, cowpea flour (Ingro): DRAFT v1.
+#
+# Not for the lab yet: lines marked PENDING wait for the institute.
+# Based on lab batch 1 (25 Nov 2026, range finding, 13 runs).
+#
+# Fixed conditions (not factors): 10 mL water per tube; ultrasonic bath set to
+# 30 C, power 100 %; ice pack from the start; centrifuge 20 min, 4 C, 7500 rpm.
+
+name = "E3 cowpea protein extraction (ultrasonic bath) - DRAFT v1"
+seed = 2026          # fixes the shuffled run order; keep it once a sheet is issued
+
+[design]
+method = "bbd"       # 3 factors -> 12 + 3 centre = 15 runs
+center_points = 3
+
+[[factors]]
+name = "flour_g"     # weighed into 10 mL; 0.1-0.5 g = 10-50 g/L (1:100 to 1:20)
+label = "Flour weighed in 10 mL"
+unit = "g"
+low = 0.1            # PENDING: institute range
+high = 0.5
+decimals = 4      # lab balance; the weighed mass goes to flour_g__applied
+
+[[factors]]
+name = "time"
+label = "Ultrasonic bath time"
+unit = "min"
+low = 10             # PENDING: 10-60 tested in batch 1; 5-30 is the alternative
+high = 60
+decimals = 0
+
+[[factors]]
+name = "ph"          # PENDING: pH as the 3rd factor (NaOH), proposed to the institute
+label = "Suspension pH (set with NaOH)"
+unit = ""
+low = 7
+high = 10
+decimals = 1
+
+[[responses]]
+name = "soluble_protein"   # measured: the lab types two Lowry absorbances
+unit = "g/L"
+goal = "max"
+low = 0.0
+high = 6.0
+
+[[responses]]
+name = "yield_mg_per_g"    # derived: g/L * 10 mL / g flour = mg/g; change scale if the volume changes
+ratio_of = ["soluble_protein", "flour_g"]
+scale = 10
+unit = "mg/g"
+goal = "max"
+low = 0.0
+high = 200.0               # ~203 mg/g = total protein (22.9 %, institute paper)
+
+# Lowry, institute SOP LBF3 (BSA 0-0.20 mg/mL). PENDING: same-day BSA curve, dilution
+# (10x is too little at 0.5 g flour: absorbance about 1.8; about 40x covers the range).
+[assay.soluble_protein]
+method = "lowry"
+slope = 4.6113
+intercept = 0.0583
+dilution = 10
+replicates = 2
+
+[optimizer]
+objective = "single"
+target = "yield_mg_per_g"  # g/L only follows the flour amount (batch 1)
+batch_size = 4
+
+[run_sheet]
+record = ["ph_measured", "bath_position", "bath_temp_start_C", "bath_temp_10min_C",
+          "bath_temp_20min_C", "bath_temp_30min_C", "bath_temp_end_C"]
+
+# No [warm_start]: the thesis data (microalgae, probe sonicator) is a different
+# material and device; E2 showed earlier data can mislead when the surfaces differ.
